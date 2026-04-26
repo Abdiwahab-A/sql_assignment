@@ -638,88 +638,156 @@ HAVING COUNT(DISTINCT EXTRACT(YEAR FROM sale_date)) =
 FROM assignment.sales
 );
 -- 101. Update the products table to assign a price_category as Expensive (price > 1000), Moderate (price between 500 and 1000), or Affordable (price < 500) using CASE WHEN
-
+SELECT product_name, 
+CASE WHEN price > 1000 THEN 'Expensive'
+WHEN price BETWEEN 500 AND 1000 THEN 'Moderate'
+ELSE 'Affordable' END as price_category 
+FROM assignment.products;
 -- 102. Update the customers table to assign a customer_level based on total spending as VIP (>20000), Regular (10000–20000), or New (<10000) using CASE WHEN
+SELECT customer_id,
+CASE WHEN SUM(total_amount) > 20000 THEN 'VIP'
+WHEN SUM(total_amount) BETWEEN 10000 AND 20000 THEN 'Regular' 
+ELSE 'New' END as customer_level
+FROM assignment.sales 
+GROUP BY customer_id;
 
 -- 103. Update the products table to assign a stock_status as Low Stock or Sufficient Stock based on stock_quantity using CASE WHEN
-
+SELECT product_name,
+CASE WHEN stock_quantity < 10 THEN 'Low Stock'
+ELSE 'Sufficient Stock' END as stock_status 
+FROM assignment.products;
 -- 104. Display each customer’s registration year from the registration_date
-
+SELECT first_name, 
+EXTRACT(YEAR FROM registration_date) as reg_year 
+FROM assignment.customers;
 -- 105. Count how many customers registered in each year
-
+SELECT 
+EXTRACT(YEAR FROM registration_date) as yr,
+COUNT(*)
+FROM assignment.customers 
+GROUP BY 1;
 -- 106. Find the total sales amount for each month
+SELECT 
+    TO_CHAR(sale_date, 'Month YYYY') AS month_name,
+    SUM(total_amount) AS monthly_revenue
+FROM assignment.sales 
+GROUP BY DATE_TRUNC('month', sale_date), TO_CHAR(sale_date, 'Month YYYY')
+ORDER BY DATE_TRUNC('month', sale_date);
 
 -- 107. Show all sales made in the year 2023
-
+SELECT * FROM assignment.sales WHERE EXTRACT(YEAR FROM sale_date) = 2023;
 -- 108. Find the total sales amount for each year
-
+SELECT EXTRACT(YEAR FROM sale_date) as yr, SUM(total_amount) FROM assignment.sales GROUP BY 1;
 -- 109. Calculate the number of days each customer has been registered (from registration_date to current date)
-
+SELECT first_name, CURRENT_DATE - registration_date as days_registered FROM assignment.customers;
 -- 110. Display each sale and extract the year and month from the sale date
-
+SELECT sale_id, EXTRACT(YEAR FROM sale_date) as year, EXTRACT(MONTH FROM sale_date) as month FROM assignment.sales;
 -- 111. Display each customer’s email and replace null values with 'No Email Provided' using COALESCE
+SELECT COALESCE(email, 'No Email Provided') FROM assignment.customers;
 
 -- 112. Find customers who do not have an email address
-
+SELECT * FROM assignment.customers WHERE email IS NULL;
 -- 113. Find products that have never been sold using a subquery
-
+SELECT * FROM assignment.products WHERE product_id NOT IN (SELECT product_id FROM assignment.sales);
 -- 114. Find customers who have not made any purchases using a subquery
+SELECT * FROM assignment.customers WHERE customer_id NOT IN (SELECT customer_id FROM assignment.sales);
 
 -- 115. Update the products table to assign a price_category (Premium, Standard, Budget) based on price using CASE WHEN
+ALTER TABLE assignment.products 
+ADD COLUMN price_category VARCHAR(20);
+UPDATE assignment.products
+SET price_category =
+CASE WHEN price > 1000 THEN 'Premium' 
+WHEN price BETWEEN 500 AND 1000 THEN 'Standard'
+ELSE 'Budget' END;
+
 
 -- 116. Create a PostgreSQL function/procedure that takes a minimum revenue as input and returns all products whose total sales exceed that value
+CREATE OR REPLACE FUNCTION assignment.get_high_sales_products(min_rev DECIMAL) RETURNS TABLE(product_id INT) AS $$
+  SELECT product_id FROM assignment.sales GROUP BY product_id HAVING SUM(total_amount) > min_rev;
+$$ LANGUAGE SQL;
+SELECT * FROM assignment.get_high_sales_products(1000.00);
+
 
 -- 117. Create a PostgreSQL function/procedure that takes a customer_id as input and returns the total amount spent by that customer
-
+CREATE FUNCTION assignment.get_customer_spend(c_id INT) RETURNS DECIMAL AS $$
+  SELECT SUM(total_amount) FROM assignment.sales WHERE customer_id = c_id;
+$$ LANGUAGE SQL;
+SELECT * FROM assignment.get_customer_spend(10);
 -- 118. Create a PostgreSQL function/procedure that takes a start_date and end_date as input and returns the number of orders made within that date range
+CREATE FUNCTION assignment.count_orders(s_date DATE, e_date DATE) RETURNS INT AS $$
+  SELECT COUNT(*) FROM assignment.sales WHERE sale_date BETWEEN s_date AND e_date;
+$$ LANGUAGE SQL;
 
 -- 119. Create a PostgreSQL stored procedure that inserts a new record into the sales table 
+CREATE PROCEDURE assignment.add_sale(sid INT, cid INT, pid INT, qty INT, sdate DATE, amt DECIMAL) AS $$
+  INSERT INTO assignment.sales VALUES (sid, cid, pid, qty, sdate, amt);
+$$ LANGUAGE SQL;
 
 -- 120. Create an index on the product_id column in the sales table to improve join performance
-
+CREATE INDEX idx_sales_prod ON assignment.sales(product_id);
 -- 121. Create an index on the registration_date column in the customers table to improve filtering by date
-
+CREATE INDEX idx_cust_reg ON assignment.customers(registration_date);
 -- 122. Write a transaction that inserts a new sale using sale_id, customer_id, product_id, quantity_sold, sale_date, and total_amount, then updates the corresponding product stock_quantity, ensuring both operations succeed or fail together
+BEGIN;
+INSERT INTO assignment.sales (sale_id, customer_id, product_id, quantity_sold, sale_date, total_amount) VALUES (999, 1, 1, 2, '2023-10-10', 500.00);
+UPDATE assignment.products SET stock_quantity = stock_quantity - 2 WHERE product_id = 1;
+COMMIT;
 
 -- 123. Write a transaction that updates a customer’s email and rolls back the change if the email is invalid
+BEGIN;
+UPDATE assignment.customers SET email = 'invalid-email' WHERE customer_id = 1;
+-- Logic to check validity would go here
+ROLLBACK; 
 
 -- 124. Create a view that shows total revenue per product
-
+CREATE VIEW assignment.product_revenue AS SELECT product_id, SUM(total_amount) 
+FROM assignment.sales GROUP BY 1;
 -- 125. Create a view that shows each customer and their total spending
-
+CREATE VIEW assignment.customer_spending AS SELECT customer_id, SUM(total_amount) FROM assignment.sales GROUP BY 1;
 -- 126. Use UNION to combine a list of all customer first names and product names into a single column
-
+SELECT first_name FROM assignment.customers UNION SELECT product_name FROM assignment.products;
 -- 127. Use INTERSECT to find values that appear in both a list of customer IDs and a list of customer IDs who made purchases
-
+SELECT customer_id FROM assignment.customers INTERSECT SELECT customer_id FROM assignment.sales;
 -- 128. Perform an anti-join to find products that have never been sold using LEFT JOIN
-
+SELECT p.* FROM assignment.products p 
+LEFT JOIN assignment.sales s ON p.product_id = s.product_id
+WHERE s.sale_id IS NULL;
 -- 129. Use NOT EXISTS to find customers who have not made any purchases
-
+SELECT * FROM assignment.customers c
+WHERE NOT EXISTS (SELECT 1 FROM assignment.sales s WHERE s.customer_id = c.customer_id);
 -- 130. Cast the price column to an integer and display it alongside the original price
-
+SELECT price, price::INT as price_int FROM assignment.products;
 -- 131. Convert registration_date to text format and display it in 'YYYY-MM' format
-
+SELECT TO_CHAR(registration_date, 'YYYY-MM') FROM assignment.customers;
 -- 132. The following query returns an error due to improper GROUP BY usage. Identify and fix the issue
 -- SELECT product_id, product_name, SUM(total_amount) FROM sales GROUP BY product_id;
-
+SELECT product_id, product_name, SUM(total_amount) FROM assignment.sales s 
+JOIN assignment.products p ON s.product_id = p.product_id
+GROUP BY product_id, product_name;
 -- 133. The following query incorrectly filters aggregated results using WHERE. Identify and correct it
 -- SELECT product_id, SUM(total_amount) FROM sales WHERE SUM(total_amount) > 1000 GROUP BY product_id;
-
+SELECT product_id, SUM(total_amount) 
+FROM assignment.sales 
+GROUP BY product_id 
+HAVING SUM(total_amount) > 1000;
 -- 134. The following query returns incorrect results because it uses the wrong join condition. Identify and fix it
 -- SELECT *
 -- FROM assignment.sales s
 -- JOIN assignment.products p
 --   ON s.customer_id = p.product_id;
+SELECT * FROM assignment.sales s JOIN assignment.products p ON s.product_id = p.product_id;
 
 -- 135. Replace NULL email values with 'No Email Provided' using COALESCE if any
-
+SELECT COALESCE(email, 'No Email Provided') FROM assignment.customers;
 -- 136. Trim any leading or trailing spaces from customer first names if any
-
+UPDATE assignment.customers SET first_name = TRIM(first_name);
 -- 137. Convert all customer emails to lowercase if any
-
+UPDATE assignment.customers SET email = LOWER(email);
 -- 138. Replace empty strings in phone numbers with NULL if any
-
+UPDATE assignment.customers SET phone_number = NULL WHERE phone_number = '';
 -- 139. Extract the year from registration_date and handle any NULL dates gracefully if any
+SELECT COALESCE(EXTRACT(YEAR FROM registration_date)::TEXT, 'Unknown') FROM assignment.customers;
 
 
 
